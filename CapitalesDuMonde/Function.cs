@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Serialization;
@@ -12,6 +13,8 @@ using Amazon;
 using Amazon.Lambda.Core;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
@@ -22,7 +25,7 @@ namespace CapitalesDuMonde
     {
         //Constantes 
         private const string BUCKET_NAME = "listePaysfr";
-        private const string KEY_NAME = "monde.xml";
+        private const string KEY_NAME = "monde.json";
         private const string SESSION_STATE_KEY = "skill-state";
 
         private static readonly RegionEndpoint BucketRegion = RegionEndpoint.EUWest1;
@@ -36,7 +39,7 @@ namespace CapitalesDuMonde
         public async Task<SkillResponse> FunctionHandler(SkillRequest input, ILambdaContext context)
         {
             S3Client = new AmazonS3Client(BucketRegion);
-            MemoryStream memory = new MemoryStream();
+            string source = "";
             //Construct response
             var response = new SkillResponse
             {
@@ -51,16 +54,21 @@ namespace CapitalesDuMonde
             int playerScore = RestoreState(playerSession);
 
             //Récupérer le fichier xml 
-            GetS3File(S3Client, memory);
+            GetS3File(S3Client, source);
 
-            var monde = new Monde();
-            var serialize = new XmlSerializer(typeof(Monde));
-            monde = (Monde)serialize.Deserialize(memory);
-
-            foreach(var m in monde.Continent)
+            if (source != null)
             {
-                LambdaLogger.Log(m.Nom);
+                Monde monde = ConvertJSonToObject<Monde>(source);
+
+
+                foreach (var m in monde.ListContinents)
+                {
+                    LambdaLogger.Log(m.NomContienent);
+                }
             }
+            else
+                LambdaLogger.Log("memory is null");
+
 
             innerResponse = new SsmlOutputSpeech();
             ((SsmlOutputSpeech)innerResponse).Ssml = $"<speak>{reponse}</speak>";
@@ -106,7 +114,7 @@ namespace CapitalesDuMonde
         /// récuperer le fichier stocker dans S3
         /// </summary>
         /// <param name="S3Client"></param>
-        public async void GetS3File(IAmazonS3 S3Client, MemoryStream memory)
+        public async void GetS3File(IAmazonS3 S3Client, string source)
         {
             var request = new GetObjectRequest
             {
@@ -119,8 +127,9 @@ namespace CapitalesDuMonde
                 LambdaLogger.Log("Get S3 file : ");
                 using (var s3Response = await S3Client.GetObjectAsync(request))
                 {
-                   // var memory = new MemoryStream();
+                    var memory = new MemoryStream();
                     await s3Response.ResponseStream.CopyToAsync(memory);
+                    source = Encoding.UTF8.GetString(memory.ToArray());
                 }
             }
             catch (AmazonS3Exception e) when (e.StatusCode == HttpStatusCode.NotFound)
@@ -134,6 +143,14 @@ namespace CapitalesDuMonde
                 throw new Exception("Unknown encountered on server");
             }
 
+        }
+
+        public T ConvertJSonToObject<T>(string jsonString)
+        {
+            DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(T));
+            MemoryStream ms = new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
+            T obj = (T)serializer.ReadObject(ms);
+            return obj;
         }
 
     }
