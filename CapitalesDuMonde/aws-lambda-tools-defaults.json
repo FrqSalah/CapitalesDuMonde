@@ -1,0 +1,21 @@
+
+{
+    "Information" : [
+        "This file provides default values for the deployment wizard inside Visual Studio and the AWS Lambda commands added to the .NET Core CLI.",
+        "To learn more about the Lambda commands with the .NET Core CLI execute the following command at the command line in the project root directory.",
+        "dotnet lambda help",
+        "All the command line options for the Lambda command can be specified in this file."
+    ],
+    "profile"     : "TechnoBox",
+    "region"      : "eu-west-1",
+    "configuration" : "Debug",
+    "framework"     : "netcoreapp2.1",
+    "function-runtime" : "dotnetcore2.1",
+    "function-memory-size" : 128,
+    "function-timeout"     : 20,
+    "function-handler"     : "CapitalesDuMonde::CapitalesDuMonde.Function::FunctionHandler",
+    "function-name"        : "Capitales_du_monde",
+    "function-role"        : "arn:aws:iam::149946319717:role/lambda_exec_Capitales_du_monde",
+    "tracing-mode"         : "PassThrough",
+    "environment-variables" : ""
+}
