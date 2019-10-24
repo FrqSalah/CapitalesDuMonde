@@ -4,39 +4,26 @@ using System.Text;
 
 namespace CapitalesDuMonde
 {
-
-
-    public class Monde
-    {
-
-        public List<Continent> ListContinents { get; set; }
-
-    }
-
-
-    public class Continent
-    {
-
-        public string NomContienent { get; set; }
-
-        private List<Pays> ListePays { get; set; }
-
-
-    }
-
-
-    public partial class Pays
-    {
-
-        /// <remarks/>
-        public string Nom { get; set; }
-
-        /// <remarks/>
-        public string Capitale { get; set; }
-
-        /// <remarks/>
-        public string Monnaie { get; set; }
-    }
+}
+public class Rootobject
+{
+    public Monde monde { get; set; }
 }
 
+public class Monde
+{
+    public Continent[] continent { get; set; }
+}
 
+public class Continent
+{
+    public string nom { get; set; }
+    public Pays[] pays { get; set; }
+}
+
+public class Pays
+{
+    public string nom { get; set; }
+    public string capitale { get; set; }
+    public string monnaie { get; set; }
+}

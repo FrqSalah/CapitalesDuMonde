@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Serialization;
 using Alexa.NET.Request;
+using Alexa.NET.Request.Type;
 using Alexa.NET.Response;
 using Amazon;
 using Amazon.Lambda.Core;
@@ -24,7 +25,7 @@ namespace CapitalesDuMonde
     public class Function
     {
         //Constantes 
-        private const string BUCKET_NAME = "listePaysfr";
+        private const string BUCKET_NAME = "listepaysfr";
         private const string KEY_NAME = "monde.json";
         private const string SESSION_STATE_KEY = "skill-state";
 
@@ -39,7 +40,7 @@ namespace CapitalesDuMonde
         public async Task<SkillResponse> FunctionHandler(SkillRequest input, ILambdaContext context)
         {
             S3Client = new AmazonS3Client(BucketRegion);
-            string source = "";
+            string source;
             //Construct response
             var response = new SkillResponse
             {
@@ -54,24 +55,62 @@ namespace CapitalesDuMonde
             int playerScore = RestoreState(playerSession);
 
             //Récupérer le fichier xml 
-            GetS3File(S3Client, source);
-
+            source = await GetS3File(S3Client);
+            Monde monde = new Monde();
             if (source != null)
             {
-                Monde monde = ConvertJSonToObject<Monde>(source);
-
-
-                foreach (var m in monde.ListContinents)
-                {
-                    LambdaLogger.Log(m.NomContienent);
-                }
+                LambdaLogger.Log("source : "+source.ToString());
+                monde = JsonConvert.DeserializeObject<Rootobject>(source).monde;
             }
             else
                 LambdaLogger.Log("memory is null");
 
 
+            // Traiter la demande du joueur
+            if (input.Request.GetType() == typeof(LaunchRequest))
+            {
+                LambdaLogger.Log("Skill Request Type : Lunch Request");
+
+                reponse = "Bienvenue dans Capitale du monde, je vais vous dire un nom de pays et vous devez trouver la capitale.";
+                // Si c'est un premier lancement sans fichier de sauvegarde
+                //if (state.Status == AdventureStatus.New)
+                // {
+                //   state.Status = AdventureStatus.InProgress;
+                //}
+            }
+            else if (input.Request.GetType() == typeof(IntentRequest))
+            {
+                Random rnd = new Random();
+                int index = rnd.Next(100);
+                string question = "C'est quoi la capitale de : ";
+                var inputRequest = (IntentRequest)input.Request;
+                LambdaLogger.Log($"Skill Request Type : IntentRequest {inputRequest.Intent.Name}");
+
+                else
+                {
+                    switch (inputRequest.Intent.Name)
+                    {
+                        case "RepeatQuestion":
+                            reponse = question;
+                            break;
+
+                        case "ProposeChocies":
+                            reponse = "choix";
+                            break;
+
+                        case "GetHint":
+                            reponse = "Elle commence par 'A'";
+                            break;
+
+                        case "AMAZON.FallbackIntent":
+                            reponse = "Can't understant your request";
+                            break;
+                    }
+                }
+            }
+
             innerResponse = new SsmlOutputSpeech();
-            ((SsmlOutputSpeech)innerResponse).Ssml = $"<speak>{reponse}</speak>";
+            ((SsmlOutputSpeech)innerResponse).Ssml = $"<speak>{}</speak>";
             response.Version = "1.0";
             response.Response.OutputSpeech = innerResponse;
             response.SessionAttributes = new Dictionary<string, object> { [SESSION_STATE_KEY] = playerScore };
@@ -114,22 +153,23 @@ namespace CapitalesDuMonde
         /// récuperer le fichier stocker dans S3
         /// </summary>
         /// <param name="S3Client"></param>
-        public async void GetS3File(IAmazonS3 S3Client, string source)
+        public async Task<string> GetS3File(IAmazonS3 S3Client)
         {
+            string source;
             var request = new GetObjectRequest
             {
                 BucketName = BUCKET_NAME,
                 Key = KEY_NAME
-            };
+            }; 
 
             try
             {
-                LambdaLogger.Log("Get S3 file : ");
                 using (var s3Response = await S3Client.GetObjectAsync(request))
                 {
                     var memory = new MemoryStream();
                     await s3Response.ResponseStream.CopyToAsync(memory);
                     source = Encoding.UTF8.GetString(memory.ToArray());
+                    return source;
                 }
             }
             catch (AmazonS3Exception e) when (e.StatusCode == HttpStatusCode.NotFound)
