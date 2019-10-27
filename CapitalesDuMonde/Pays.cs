@@ -12,13 +12,13 @@ public class Rootobject
 
 public class Monde
 {
-    public Continent[] continent { get; set; }
+    public List<Continent> continent { get; set; }
 }
 
 public class Continent
 {
     public string nom { get; set; }
-    public Pays[] pays { get; set; }
+    public List<Pays> pays { get; set; }
 }
 
 public class Pays

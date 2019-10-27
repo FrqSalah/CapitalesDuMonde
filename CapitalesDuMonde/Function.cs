@@ -52,26 +52,31 @@ namespace CapitalesDuMonde
 
             //Récupérer la session
             var playerSession = input.Session;
-            int playerScore = RestoreState(playerSession);
+            PlayerState playerScore = new PlayerState();
 
             //Récupérer le fichier xml 
             source = await GetS3File(S3Client);
             Monde monde = new Monde();
             if (source != null)
             {
-                LambdaLogger.Log("source : "+source.ToString());
+                //LambdaLogger.Log("source : " + source.ToString());
                 monde = JsonConvert.DeserializeObject<Rootobject>(source).monde;
             }
             else
                 LambdaLogger.Log("memory is null");
 
+            Dictionary<string, List<Pays>> dicoPays = new Dictionary<string, List<Pays>>();
+            foreach (var c in monde.continent)
+            {
+                dicoPays.Add(c.nom, c.pays);
+            }
 
             // Traiter la demande du joueur
             if (input.Request.GetType() == typeof(LaunchRequest))
             {
                 LambdaLogger.Log("Skill Request Type : Lunch Request");
 
-                reponse = "Bienvenue dans Capitale du monde, je vais vous dire un nom de pays et vous devez trouver la capitale.";
+                reponse = "Bienvenue dans Capitales du monde, je vais vous dire un nom de pays et vous devez trouver la capitale. Dites 'commencer' pour démarrer le jeu";
                 // Si c'est un premier lancement sans fichier de sauvegarde
                 //if (state.Status == AdventureStatus.New)
                 // {
@@ -80,37 +85,72 @@ namespace CapitalesDuMonde
             }
             else if (input.Request.GetType() == typeof(IntentRequest))
             {
-                Random rnd = new Random();
-                int index = rnd.Next(100);
-                string question = "C'est quoi la capitale de : ";
+                playerScore = RestoreState(playerSession);
+
                 var inputRequest = (IntentRequest)input.Request;
                 LambdaLogger.Log($"Skill Request Type : IntentRequest {inputRequest.Intent.Name}");
+                Pays paysChoisit;
 
-                else
+                switch (inputRequest.Intent.Name)
                 {
-                    switch (inputRequest.Intent.Name)
-                    {
-                        case "RepeatQuestion":
-                            reponse = question;
-                            break;
+                    case "StartGame":
+                        //Selectionner un pays au hasard 
+                        Random rnd = new Random();
+                        int indexContinent = rnd.Next(dicoPays.Keys.Count);
+                        string keyPays = dicoPays.Keys.ElementAt(indexContinent);
+                        
+                        //Choisir pays
+                        var listPays= dicoPays[keyPays];
+                        int indexPays = rnd.Next(listPays.Count);
+                        paysChoisit = listPays[indexPays];
 
-                        case "ProposeChocies":
-                            reponse = "choix";
-                            break;
+                        playerScore = SaveState(paysChoisit, 0);
+                        reponse = $"C'est quoi la capitale du {paysChoisit.nom} ?";                             
+                        break;
 
-                        case "GetHint":
-                            reponse = "Elle commence par 'A'";
-                            break;
+                    case "RepeatQuestion":
+                        paysChoisit = playerScore.Pays;
+                        reponse = $"Ecoutez bien, C'est quoi la capitale du {paysChoisit.nom} ?";
+                        break;
 
-                        case "AMAZON.FallbackIntent":
-                            reponse = "Can't understant your request";
-                            break;
-                    }
+                    case "ProposeChoices":
+                        reponse = "choix";
+                        break;
+
+                    case "GetHint":
+                        paysChoisit = playerScore.Pays;
+                        reponse = $"Le nom de la capitale commence par la lettre, '{paysChoisit.nom.First()}' ?";
+                        break;
+
+                    case "Response":
+                        var rep = inputRequest.Intent.Slots["reponse"].Value; 
+                        paysChoisit = playerScore.Pays;
+                        LambdaLogger.Log($"======> {paysChoisit.capitale} / {rep}");
+                        if(String.Equals(rep, paysChoisit.capitale, StringComparison.CurrentCultureIgnoreCase))
+                            reponse = $"Bravo, c'est la bonne réponse. Votre score est mainteant {++playerScore.Score} points";
+                        else
+                            reponse ="Dommage, ce n'est pas bon";
+                        break;
+
+                    case "AMAZON.FallbackIntent":
+                        reponse = "Can't understant your request";
+                        break;
+                    
+                    case BuiltInIntent.Stop:
+                    case BuiltInIntent.Cancel:
+                        LambdaLogger.Log($"built-in stop/cancel intent ({inputRequest.Intent.Name})");
+                        break;
+
+                    default:
+
+                        break;
                 }
+
             }
 
+            // Construire la réponse
             innerResponse = new SsmlOutputSpeech();
-            ((SsmlOutputSpeech)innerResponse).Ssml = $"<speak>{}</speak>";
+            ((SsmlOutputSpeech)innerResponse).Ssml = $"<speak>{reponse}</speak>";
             response.Version = "1.0";
             response.Response.OutputSpeech = innerResponse;
             response.SessionAttributes = new Dictionary<string, object> { [SESSION_STATE_KEY] = playerScore };
@@ -123,9 +163,9 @@ namespace CapitalesDuMonde
         /// </summary>
         /// <param name="session"></param>
         /// <returns></returns>
-        public int RestoreState(Session session)
+        public PlayerState RestoreState(Session session)
         {
-            int score = 0;
+            PlayerState playerState = new PlayerState();
             if (session != null && session.New)
             {
                 LambdaLogger.Log("New Session");
@@ -137,16 +177,27 @@ namespace CapitalesDuMonde
                 var playerStateValue = session.Attributes.GetValueOrDefault(SESSION_STATE_KEY) ?? null;
                 try
                 {
-                    score = (int)playerStateValue;
+                    var st = (JObject)playerStateValue;                                       
+                    playerState = st.ToObject<PlayerState>();
+                    LambdaLogger.Log("playerState capitale : ==>"+ playerState.ToString());
                 }
                 catch (Exception)
                 {
                     LambdaLogger.Log("Converstion Exception");
-                    return 0;
+                    return playerState;
                 }
             }
-            return score;
+            return playerState;
+        }
 
+        public PlayerState SaveState(Pays paysChoisit, int score)
+        {
+            PlayerState playerState = new PlayerState();
+            playerState.Pays = paysChoisit;
+            playerState.Score = score;            
+            return playerState;
+            //playerState.Questions
+            
         }
 
         /// <summary>
@@ -160,7 +211,7 @@ namespace CapitalesDuMonde
             {
                 BucketName = BUCKET_NAME,
                 Key = KEY_NAME
-            }; 
+            };
 
             try
             {
