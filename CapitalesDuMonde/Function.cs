@@ -75,13 +75,8 @@ namespace CapitalesDuMonde
             if (input.Request.GetType() == typeof(LaunchRequest))
             {
                 LambdaLogger.Log("Skill Request Type : Lunch Request");
-
-                reponse = "Bienvenue dans Capitales du monde, je vais vous dire un nom de pays et vous devez trouver la capitale. Dites 'commencer' pour démarrer le jeu";
-                // Si c'est un premier lancement sans fichier de sauvegarde
-                //if (state.Status == AdventureStatus.New)
-                // {
-                //   state.Status = AdventureStatus.InProgress;
-                //}
+                reponse = "Bienvenue dans Capitales du monde. " +
+                    "Dites 'commencer' pour démarrer le jeu. Pour connaitres les règles dites 'aide'";
             }
             else if (input.Request.GetType() == typeof(IntentRequest))
             {
@@ -94,23 +89,23 @@ namespace CapitalesDuMonde
                 switch (inputRequest.Intent.Name)
                 {
                     case "StartGame":
-                        //Selectionner un pays au hasard 
-                        Random rnd = new Random();
-                        int indexContinent = rnd.Next(dicoPays.Keys.Count);
-                        string keyPays = dicoPays.Keys.ElementAt(indexContinent);
-                        
-                        //Choisir pays
-                        var listPays= dicoPays[keyPays];
-                        int indexPays = rnd.Next(listPays.Count);
-                        paysChoisit = listPays[indexPays];
-
+                        SeachQuestion(dicoPays, out paysChoisit);
                         playerScore = SaveState(paysChoisit, 0);
                         reponse = $"C'est quoi la capitale du {paysChoisit.nom} ?";                             
                         break;
 
+                    case "NextQuestion":
+                        reponse = $"La reponse était {playerScore.Pays.capitale}.";
+
+                        SeachQuestion(dicoPays, out paysChoisit);
+
+                        playerScore = SaveState(paysChoisit, playerScore.Score);
+                        reponse += $" Question suivante, C'est quoi la capitale du {paysChoisit.nom} ?";
+                        break;
+
                     case "RepeatQuestion":
                         paysChoisit = playerScore.Pays;
-                        reponse = $"Ecoutez bien, C'est quoi la capitale du {paysChoisit.nom} ?";
+                        reponse = $"C'est quoi la capitale du {paysChoisit.nom} ?";
                         break;
 
                     case "ProposeChoices":
@@ -119,21 +114,37 @@ namespace CapitalesDuMonde
 
                     case "GetHint":
                         paysChoisit = playerScore.Pays;
-                        reponse = $"Le nom de la capitale commence par la lettre, '{paysChoisit.nom.First()}' ?";
+                        reponse = $"Le nom de la capitale commence par la lettre, {paysChoisit.capitale.First()} ?";
                         break;
 
                     case "Response":
                         var rep = inputRequest.Intent.Slots["reponse"].Value; 
                         paysChoisit = playerScore.Pays;
-                        LambdaLogger.Log($"======> {paysChoisit.capitale} / {rep}");
-                        if(String.Equals(rep, paysChoisit.capitale, StringComparison.CurrentCultureIgnoreCase))
-                            reponse = $"Bravo, c'est la bonne réponse. Votre score est mainteant {++playerScore.Score} points";
+                        
+                        double encodedRep = Phonex.Encode(rep);
+                        LambdaLogger.Log($"======> {paysChoisit.capitale} / {rep} / {encodedRep}");
+                        if (encodedRep == paysChoisit.capitaleEncoded)
+                        {
+                            reponse = $"Bravo, c'est la bonne réponse. Votre score est mainteant {++playerScore.Score} points.";                            
+
+                            // Choisir nouvelle question 
+                            SeachQuestion(dicoPays, out paysChoisit);
+                            playerScore = SaveState(paysChoisit, playerScore.Score);
+                            reponse += $" Question suivante, quelle est la capitale du {paysChoisit.nom} ?";
+
+                        }
                         else
-                            reponse ="Dommage, ce n'est pas bon";
+                            reponse = "Dommage, ce n'est pas bon";
+                        break;
+
+                    case BuiltInIntent.Help:
+                        reponse = "Pour lancer le jeu dites commencer : Je vous annonce un pays et vous devez trouver la capitale. Chaque bonne réponse vous donne un score de 1. " +
+                            "Dites indice pour avoie un indice. Question suivante pour changer de question. " +
+                            "Vous pouvez à tout moment sortir du jeu en disant stop.";
                         break;
 
                     case "AMAZON.FallbackIntent":
-                        reponse = "Can't understant your request";
+                        reponse = "Je ne comprend pas votre demande";
                         break;
                     
                     case BuiltInIntent.Stop:
@@ -142,7 +153,7 @@ namespace CapitalesDuMonde
                         break;
 
                     default:
-
+                        reponse = "Je ne comprend pas votre demande";
                         break;
                 }
 
@@ -156,6 +167,23 @@ namespace CapitalesDuMonde
             response.SessionAttributes = new Dictionary<string, object> { [SESSION_STATE_KEY] = playerScore };
 
             return response;
+        }
+
+        private void SeachQuestion(Dictionary<string, List<Pays>> dicoPays, out Pays paysChoisit)
+        {
+            Random rnd = new Random();
+            int indexContinent = rnd.Next(dicoPays.Keys.Count);
+            string keyPays = dicoPays.Keys.ElementAt(indexContinent);
+
+            //Choisir pays
+            var listPays = dicoPays[keyPays];
+            int indexPays = rnd.Next(listPays.Count);
+            paysChoisit = listPays[indexPays];
+            LambdaLogger.Log("Capotale ==> " + paysChoisit.capitale);
+            paysChoisit.capitale = paysChoisit.capitale;
+            paysChoisit.capitaleEncoded = Phonex.Encode(paysChoisit.capitale);
+
+            LambdaLogger.Log("Capitale Encoded ==> " + paysChoisit.capitale);
         }
 
         /// <summary>

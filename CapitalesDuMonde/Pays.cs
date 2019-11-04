@@ -25,5 +25,6 @@ public class Pays
 {
     public string nom { get; set; }
     public string capitale { get; set; }
+    public double capitaleEncoded { get; set; }
     public string monnaie { get; set; }
 }
